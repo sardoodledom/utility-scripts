@@ -33,8 +33,12 @@ main() {
   cleanup
   if [ "$sweep_the_leg" == "-k" ];
   then
-    echo "You're going down Daniel San!"
-    close_sockets
+    while true
+    do
+      echo "You're going down Daniel San!"
+      close_sockets
+      sleep 30
+    done
   fi
 }
 
