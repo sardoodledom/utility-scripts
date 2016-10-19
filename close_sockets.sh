@@ -36,8 +36,10 @@ main() {
     while true
     do
       echo "You're going down Daniel San!"
+      echo "Sweeping the leg iteration $counter"
       close_sockets
-      sleep 30
+      sleep 20
+      let counter++
     done
   fi
 }
