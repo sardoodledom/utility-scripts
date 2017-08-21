@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
+import argparse
 import paramiko
 import logging
+import os
 
-from os import stat
 from datetime import datetime
 
 LOG = logging.getLogger(__name__)
@@ -39,22 +40,21 @@ def backup_database(ssh, database, BACKUP_DIR):
     """
 
     backup_time = datetime.datetime.now().strftime('%m-%d-%Y-%H:%M:%S')
-    backup_path = '{0}/{1}.sql'.format(BACKUP_DIR, backup_time)
-    mysqldump_cmd = 'mysqldump {0} > {1}'.format(database, BACKUP_DIR)
+    backup_file_path = '{0}/{1}.sql'.format(BACKUP_DIR, backup_time)
+    mysqldump_cmd = 'mysqldump {0} > {1}'.format(database, backup_file_path)
     try:
         _, stdout, stderr = ssh.exec_command(mysqldump_cmd)
         if stderr is not '':
             LOG.error('stderr is {0}'.format(stderr))
             return False
-
     except paramiko.ssh_exception.SSHException as e:
         LOG.error('Connection to host failed with error'
                   '{0}'.format(e))
 
-    return backup_path
+    return backup_file_path
 
 
-def compress_backup(ssh, path):
+def compress_db_backup(ssh, backup_file_path):
     """
     Compress backup file with remote host's gzip command
 
@@ -62,8 +62,8 @@ def compress_backup(ssh, path):
     :param path:
     :return:
     """
-    compress_cmd = 'gzip {0}'.format(path)
-    compressed_path = '{0}.gz'.format(path)
+    compress_cmd = 'gzip {0}'.format(backup_file_path)
+    compressed_path = '{0}.gz'.format(backup_file_path)
     file_list = []
 
     try:
@@ -75,6 +75,44 @@ def compress_backup(ssh, path):
                   '{0}'.format(e))
 
     return compressed_path if compressed_path in file_list else None
+
+
+def create_remote_path(ssh, path):
+    """
+    Create remote backup path if it doesn't exist
+
+    :param ssh:
+    :param path:
+    :return:
+    """
+    check_remote_path = 'test -d {0}'.format(path)
+    create_path_cmd = 'mkdir -p {0}'.format(path)
+    try:
+        _, stdout, _ = ssh.exec_command(check_remote_path)
+
+        # We should get an exit status of 1 if the path doesn't exist
+        if stdout.channel.recv_exit_status == 1:
+            _, stdout, stderr = ssh.exec_command(create_path_cmd)
+            if stderr is not '':
+                LOG.error('stderr is {0}'.format(stderr))
+                return False
+    except paramiko.ssh_exception.SSHException as e:
+        LOG.error('Connection to host failed with error'
+                  '{0}'.format(e))
+
+    return True
+
+
+def create_local_path(path):
+    """
+    Create local path for backups
+
+    :param path:
+    :return:
+    """
+
+    if not os.path.exists(path):
+        os.makedirs(path)
 
 
 def get_backup_file(ssh, local_path, remote_path):
@@ -89,15 +127,15 @@ def get_backup_file(ssh, local_path, remote_path):
 
     sftp = ssh.open_sftp()
     sftp.get(remote_path, local_path)
-    mode = stat(local_path)
-
-    if stat.S_ISREG(mode):
-        return local_path
-
-    return None
 
 
 def main():
+    # We're not doing anything here yet
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument(
+        '-v', '--verbose', action='count', default=0,
+        help="Increase verbosity (specify multiple times for more)")
 
     log_level = logging.INFO
     format = '%(asctime)s - %(levelname)s - %(message)s'
