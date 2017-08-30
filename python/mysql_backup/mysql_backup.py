@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import argparse
 import paramiko
 import logging
@@ -9,7 +10,7 @@ LOG = logging.getLogger(__name__)
 SSH_USER = "centos"
 
 
-def backup_database(ssh, database, backup_dir):
+def backup_database(ssh, database, directory):
     """
     Use paramiko to run mysql dump on the remote host
 
@@ -19,23 +20,25 @@ def backup_database(ssh, database, backup_dir):
     :return back_path:
     """
 
-    backup_time = datetime.datetime.now().strftime('%m-%d-%Y-%H:%M:%S')
-    backup_file_path = '{0}/{1}.sql'.format(backup_dir, backup_time)
-    mysqldump_cmd = 'sudo mysqldump {0} > {1}'.format(database,
-                                                      backup_file_path)
+    backup_time = datetime.now().strftime('%m-%d-%Y-%H:%M:%S')
+    path = '{0}/{1}.sql'.format(directory, backup_time)
+    mysqldump_cmd = "sudo bash -c 'mysqldump {0} > {1}'".format(database,
+                                                                path)
     try:
         _, stdout, stderr = ssh.exec_command(mysqldump_cmd)
-        if stderr is not '':
-            LOG.error('stderr is {0}'.format(stderr))
-            return False
+        exit_status = stdout.channel.recv_exit_status()
+        # We should get an exit status of 1 if the path doesn't exist
+        if exit_status > 0:
+            LOG.error('Command exit status'
+                      ' {0} {1}'.format(exit_status, stderr.read().decode()))
+            return None
+        return path
     except paramiko.ssh_exception.SSHException as e:
         LOG.error('Connection to host failed with error'
                   '{0}'.format(e))
 
-    return backup_file_path
 
-
-def compress_db_backup(ssh, backup_file_path):
+def compress_db_backup(ssh, path):
     """
     Compress backup file with remote host's gzip command
 
@@ -43,19 +46,21 @@ def compress_db_backup(ssh, backup_file_path):
     :param path:
     :return:
     """
-    compress_cmd = 'sudo gzip {0}'.format(backup_file_path)
-    compressed_path = '{0}.gz'.format(backup_file_path)
-    file_list = []
+    compress_cmd = 'sudo gzip {0}'.format(path)
+    compressed_path = '{0}.gz'.format(path)
+    file_list_output = ''
 
     try:
         _, stdout, _ = ssh.exec_command(compress_cmd)
         LOG.info('stdout: {0}'.format(stdout.read().decode()))
-        file_list = ssh.listdir()
+        _, stdout, _ = ssh.exec_command('ls {0}'.format(compressed_path))
+        file_list_output = stdout.read().decode()
+        LOG.info('file_list: {0}'.format(file_list_output))
     except paramiko.ssh_exception.SSHException as e:
         LOG.error('Connection to host failed with error'
                   '{0}'.format(e))
 
-    return compressed_path if compressed_path in file_list else None
+    return compressed_path if compressed_path in file_list_output else None
 
 
 def create_connection(hostname, username):
@@ -99,11 +104,13 @@ def create_remote_path(ssh, path):
     create_path_cmd = 'sudo mkdir -p {0}'.format(path)
     try:
         _, stdout, stderr = ssh.exec_command(create_path_cmd)
+        exit_status = stdout.channel.recv_exit_status()
 
         # We should get an exit status of 1 if the path doesn't exist
-        if stderr.channel.recv_exit_status == 1:
-            # LOG.error('stderr is {0}'.format(stderr.read().decode()))
-            return False
+        if exit_status > 0:
+            LOG.error('Command exit status'
+                      ' {0} {1}'.format(exit_status, stderr.read().decode()))
+            return None
         return path
     except paramiko.ssh_exception.SSHException as e:
         LOG.error('Connection to host failed with error'
@@ -121,11 +128,16 @@ def get_backup_file(ssh, local_path, remote_path):
     """
 
     sftp = ssh.open_sftp()
-    sftp.get(remote_path, local_path)
+    backup_file = remote_path.split('/')[-1]
+    local_path = '/'.join([local_path, backup_file])
+
+    with sftp.open(remote_path, mode='rb') as remote_file:
+        contents = remote_file.read()
+        with open(local_path, 'wb') as local_file:
+            local_file.write(contents)
 
 
 def main():
-    # We're not doing anything here yet
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
@@ -137,6 +149,14 @@ def main():
         default='/tmp',
         help="The backup directory on the remote database host")
     parser.add_argument(
+        '--database', action='store',
+        required=True,
+        help="The database you want to backup")
+    parser.add_argument(
+        '--server', action='store',
+        required=True,
+        help="The database server ip/hostname")
+    parser.add_argument(
         '-v', '--verbose', action='count', default=0,
         help="Increase verbosity (specify multiple times for more)")
     args = parser.parse_args()
@@ -147,6 +167,16 @@ def main():
 
     format = '%(asctime)s - %(levelname)s - %(message)s'
     logging.basicConfig(format=format, datefmt='%m-%d %H:%M', level=log_level)
+
+    ssh = create_connection(args.server, SSH_USER)
+    create_local_path(args.local_dir)
+    create_remote_path(ssh, args.remote_dir)
+    db_backup = backup_database(ssh, args.database, args.remote_dir)
+
+    if db_backup:
+        compressed_db_backup = compress_db_backup(ssh, db_backup)
+        if compressed_db_backup:
+            get_backup_file(ssh, args.local_dir, compressed_db_backup)
 
 
 if __name__ == '__main__':
