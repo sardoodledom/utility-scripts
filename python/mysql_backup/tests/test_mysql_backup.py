@@ -45,7 +45,7 @@ class TestMySQLBackup(unittest.TestCase):
         self.assertEqual(self.remote_backup_dir, remote_path)
 
     def test_create_remote_path_negative(self):
-        """Test that a failure returns False"""
+        """Test that we handle remote path failures properly"""
 
         self.stdout.channel.recv_exit_status.return_value = 1
         error_msg = "mkdir: cannot create directory ‘tests’: File exists"
@@ -67,8 +67,8 @@ class TestMySQLBackup(unittest.TestCase):
         db_backup = mysql_backup.backup_database(self.ssh,
                                                  'test_database',
                                                  remote_path)
-        re_string = '/'.join([self.remote_backup_dir,
-                              '\d{2}-\d{2}-\d{4}-\d{2}:\d{2}:\d{2}.sql'])
+        re_string = '/'.join([self.remote_backup_dir, 'test_database'
+                              '-\d{2}-\d{2}-\d{4}-\d{2}:\d{2}:\d{2}.sql'])
         regex = re.compile(re_string)
         self.assertTrue(regex.match(db_backup))
 
@@ -82,7 +82,7 @@ class TestMySQLBackup(unittest.TestCase):
         remote_path = mysql_backup.create_remote_path(self.ssh,
                                                       self.remote_backup_dir)
         self.stdout.channel.recv_exit_status.return_value = 1
-        error_msg = "bash: permission denied"
+        error_msg = "mysqldump: permission denied"
         self.stderr.read.return_value.decode.return_value = error_msg
         db_backup = mysql_backup.backup_database(self.ssh,
                                                  'test_database',
@@ -104,6 +104,24 @@ class TestMySQLBackup(unittest.TestCase):
                                      self.remote_path)
         self.assertTrue(filecmp.cmp(self.remote_path, self.local_path,
                                     shallow=False))
+
+    def test_remote_cleanup(self):
+        """Test remote host cleanup with a mock object"""
+
+        self.stdout.channel.recv_exit_status.return_value = 0
+        cleanup = mysql_backup.remote_cleanup(self.ssh,
+                                              self.remote_backup_dir)
+        self.assertTrue(cleanup)
+
+    def test_cleanup_remote_negative(self):
+        """Test that a remote host cleanup failure returns False"""
+
+        self.stdout.channel.recv_exit_status.return_value = 1
+        error_msg = "rm: cannot remove 'test-backup.sql.gz': Permission denied"
+        self.stderr.read.return_value.decode.return_value = error_msg
+        cleanup = mysql_backup.remote_cleanup(self.ssh,
+                                              self.remote_backup_dir)
+        self.assertFalse(cleanup)
 
     def tearDown(self):
         """Clean up leftover resources"""

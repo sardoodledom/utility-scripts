@@ -21,7 +21,7 @@ def backup_database(ssh, database, directory):
     """
 
     backup_time = datetime.now().strftime('%m-%d-%Y-%H:%M:%S')
-    path = '{0}/{1}.sql'.format(directory, backup_time)
+    path = '{0}/{1}-{2}.sql'.format(directory, database, backup_time)
     mysqldump_cmd = "sudo bash -c 'mysqldump {0} > {1}'".format(database,
                                                                 path)
     try:
@@ -137,6 +137,31 @@ def get_backup_file(ssh, local_path, remote_path):
             local_file.write(contents)
 
 
+def remote_cleanup(ssh, remote_path):
+    """
+    Cleanup remote host backup directory
+
+    :param ssh:
+    :param remote_path:
+    :return:
+    """
+
+    cleanup_cmd = 'sudo rm -f {0}'.format(remote_path)
+    try:
+        _, stdout, stderr = ssh.exec_command(cleanup_cmd)
+        exit_status = stdout.channel.recv_exit_status()
+
+        # We should get an exit status of 1 if the path doesn't exist
+        if exit_status > 0:
+            LOG.error('Command exit status'
+                      ' {0} {1}'.format(exit_status, stderr.read().decode()))
+            return False
+        return True
+    except paramiko.ssh_exception.SSHException as e:
+        LOG.error('Connection to host failed with error'
+                  '{0}'.format(e))
+
+
 def main():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -177,6 +202,8 @@ def main():
         compressed_db_backup = compress_db_backup(ssh, db_backup)
         if compressed_db_backup:
             get_backup_file(ssh, args.local_dir, compressed_db_backup)
+            cleanup = remote_cleanup(ssh, compressed_db_backup)
+            LOG.debug('Cleanup finished with a status of {0}'.format(cleanup))
 
 
 if __name__ == '__main__':
