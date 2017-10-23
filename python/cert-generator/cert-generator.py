@@ -11,8 +11,8 @@ TYPE_RSA = crypto.TYPE_RSA
 TYPE_DSA = crypto.TYPE_DSA
 SUBJECT = {
     'C': 'US',
-    'ST': 'North Carolina',
-    'L': 'Raleigh',
+    'ST': 'New York',
+    'L': 'New York',
     'O': 'Evil Corp',
     'OU': 'DevOps Automation'
 }
@@ -24,8 +24,7 @@ class CertificateGenerator:
         """
         Create local path for backups
 
-        :param path:
-        :return:
+        :param path: Local path to create
         """
 
         LOG.info('Creating path {0}'.format(path))
@@ -40,8 +39,8 @@ class CertificateGenerator:
         60 * 60 * 24 *365 *1
         31536000
 
-        :param years:
-        :return integer: timestamp in seconds
+        :param years (int):
+        :return integer (int): timestamp in seconds
         """
 
         return 60 * 60 * 24 * 365 * years
@@ -51,10 +50,11 @@ class CertificateGenerator:
         Given private key pkey, digest and a common name kwargs create a
         certificate signing request
 
-        :param pkey:
-        :param digest:
-        :param name:
-        :return:
+        :param pkey: Private key to use
+        :param digest (str): Digest method to use for signing,
+                             default is sha256
+        :param name (dict): Dictionary of certificate subject data to use
+        :return (X509Req Object): Certificate request object
         """
 
         req = crypto.X509Req()
@@ -74,16 +74,17 @@ class CertificateGenerator:
         """
         Generate a certificate given a certificate request.
 
-        :param req: Certificate reqeust to use
-        :param issuer_cert: The certificate of the issuer
-        :param issuer_key: The private key of the issuer
-        :param serial: Serial number for the certificate
-        :param not_before: Timestamp (relative to now) when the certificate
-               starts being valid
-        :param not_after: Timestamp (relative to now) when the certificate
-               stops being valid
-        :param digest: Digest method to use for signing, default is sha256
-        :return: The signed certificate in and X509 object
+        :param req (x509Req object): Certificate reqeust to use
+        :param issuer_cert (x509 object): The certificate of the issuer
+        :param issuer_key (PKey object): The private key of the issuer
+        :param serial (int): Serial number for the certificate
+        :param not_before (int): Timestamp in seconds (relative to now) when
+                                 the certificate starts being valid.
+        :param not_after (int): Timestamp in seconds(relative to now) when the
+                                certificate stops being valid.
+        :param digest (str): Digest method to use for signing,
+                             default is sha256
+        :return (X509 object) : The signed certificate in an X509 object
         """
 
         cert = crypto.X509()
@@ -103,9 +104,9 @@ class CertificateGenerator:
         Given a type of TYPE_RSA or TYPE_DSA and an integer of bits, generate a
         private key.
 
-        :param type:
-        :param bits:
-        :return: pkey
+        :param type (str): The type of encryption algorithm to use
+        :param bits (int):
+        :return (crypto.Pkey object): Private key
         """
 
         pkey = crypto.PKey()
@@ -130,11 +131,10 @@ class CertificateGenerator:
         Creates a certificate bundle, which is returned in a dictionary
         for the write certs method.
 
-        :param bits: integer
-        :param ca_data: dictionary
-        :param serial: integer
-        :param years: integer
-        :return: cert_data: dictionary
+        :param bits (int): Number of bits to use in the private keys
+        :param ca_data (dict): dictionary of ca req and keys
+        :param years (int): Number of years the certs are valid
+        :return cert_data (dict): Dictionary of key and filename data
         """
 
         cert_data = {}
@@ -166,13 +166,15 @@ class CertificateGenerator:
         """
         Write certificate bundle to file
 
-        :param path:
-        :param cert_data:
+        :param path (os.path object): The path to store the certs in
+        :param cert_data (dict): Dictionary of cert, request, private key and
+                                 filename data.
         """
 
         req_pem = crypto.dump_certificate_request(crypto.FILETYPE_PEM,
                                                   cert_data['req'])
-        pkey_pem = crypto.dump_privatekey(crypto.FILETYPE_PEM, cert_data['key'])
+        pkey_pem = crypto.dump_privatekey(crypto.FILETYPE_PEM,
+                                          cert_data['key'])
         cert_pem = crypto.dump_certificate(crypto.FILETYPE_PEM,
                                            cert_data['cert'])
         fname = cert_data['fname']
