@@ -99,7 +99,7 @@ class CertificateGenerator:
 
         return cert
 
-    def generate_keypair(self, type, bits):
+    def generate_keypair(self, algo_type, bits):
         """
         Given a type of TYPE_RSA or TYPE_DSA and an integer of bits, generate a
         private key.
@@ -110,7 +110,7 @@ class CertificateGenerator:
         """
 
         pkey = crypto.PKey()
-        pkey.generate_key(type, bits)
+        pkey.generate_key(algo_type, bits)
 
         return pkey
 
